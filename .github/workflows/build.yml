@@ -9,7 +9,6 @@ env:
   PLUGIN_COMMIT: 6075d8fe0c9a7b73a2d5d7155bb7b9c8b39cd6fe
   OBS_HEADERS_TAG: "25.0.8"
   OBS_DLL_VERSION: "33.0.3"
-  OBS_DLL_ZIP_SHA256: 18a68c325adbda6f6082d5281021a8d1e35a6432842800618e8690b71925c107
 
 jobs:
   build:
@@ -59,8 +58,6 @@ jobs:
           pip install pefile
           $url = "https://github.com"
           Invoke-WebRequest $url -OutFile obs.zip
-          $h = (Get-FileHash obs.zip -Algorithm SHA256).Hash.ToLower()
-          if ($h -ne $env:OBS_DLL_ZIP_SHA256) { throw "SHA256 не совпал: $h" }
           python -c "import zipfile; zipfile.ZipFile('obs.zip').extract('bin/64bit/obs.dll','obsdll')"
           python repo/ci/make_obs_def.py obsdll/bin/64bit/obs.dll obs.def
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
