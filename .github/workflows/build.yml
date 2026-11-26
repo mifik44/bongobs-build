@@ -57,9 +57,11 @@ jobs:
           # (-nodefaultlib -noentry), а новый компилятор VS2026 на раннерах GitHub превращает
           # цикл обнуления в glewContextInit в вызов memset -> у glew.dll нечем его закрыть
           # -> LNK2019/LNK1120. Котику нужна только статическая glew_s, поэтому просто
-          # вырезаем вредную строку, чтобы и демо-цель собиралась без проблем.
-          sed -i '/nodefaultlib -noentry/d' plugin/thirdParty/glew/build/cmake/CMakeLists.txt
-          grep -n "nodefaultlib" plugin/thirdParty/glew/build/cmake/CMakeLists.txt || echo "OK: строка nodefaultlib удалена"
+          # вырезаем вредную строку. Внимание: мы уже внутри папки plugin,
+          # поэтому путь начинается с thirdParty/ (в прошлой версии был
+          # plugin/thirdParty/... -> sed не находил файл -> шаг падал мгновенно).
+          # Страховка: даже если sed не сработает, сборке это не навредит (|| echo).
+          sed -i '/nodefaultlib/d' thirdParty/glew/build/cmake/CMakeLists.txt || echo "страховка не сработала, продолжаем"
           git status --short
 
       - uses: actions/setup-python@v6
