@@ -74,17 +74,55 @@ jobs:
           & $libexe.FullName /nologo /def:obs.def /machine:x64 /out:obs.lib
           if (-not (Test-Path obs.lib)) { throw "obs.lib не создан" }
 
-      - name: Настроить CMake
+      - name: Настроить CMake (пробует несколько генераторов)
         shell: pwsh
         run: |
-          cmake -S repo/ci -B build -A x64 `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DPLUGIN_SRC="$env:GITHUB_WORKSPACE/plugin" `
-            -DOBS_INCLUDE="$env:GITHUB_WORKSPACE/obs-src/libobs" `
-            -DOBS_LIB="$env:GITHUB_WORKSPACE/obs.lib"
+          $ErrorActionPreference = 'Continue'
+          $ws = $env:GITHUB_WORKSPACE
+          function Write-Tail($title, $file, $pattern) {
+            "## $title" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            if ($pattern) {
+              "--- строки с ошибками ---" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              Select-String -Path $file -Pattern $pattern | Select-Object -First 40 | ForEach-Object { $_.Line } | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              "--- последние строки ---" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            }
+            Get-Content $file -Tail 60 | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          $gens = @("", "Visual Studio 17 2022", "Visual Studio 18 2026")
+          $ok = $false
+          foreach ($g in $gens) {
+            if (Test-Path build) { Remove-Item build -Recurse -Force }
+            if (Test-Path plugin/gl) { Remove-Item plugin/gl -Recurse -Force }
+            $cmakeArgs = @("-S", "repo/ci", "-B", "build", "-A", "x64",
+              "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+              "-DPLUGIN_SRC=$ws/plugin", "-DOBS_INCLUDE=$ws/obs-src/libobs", "-DOBS_LIB=$ws/obs.lib")
+            if ($g -ne "") { $cmakeArgs = @("-G", $g) + $cmakeArgs }
+            "=== Попытка: генератор '$g' ===" | Tee-Object -FilePath cmake-configure.log -Append
+            cmake --version | Select-Object -First 1 | Tee-Object -FilePath cmake-configure.log -Append
+            & cmake @cmakeArgs 2>&1 | Tee-Object -FilePath cmake-configure.log -Append
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+          }
+          if (-not $ok) {
+            Write-Tail "Ошибка CMake (настройка)" "cmake-configure.log" "Error|error|FATAL"
+            exit 1
+          }
+          exit 0
 
       - name: Собрать
-        run: cmake --build build --config Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cmake --build build --config Release 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            "## Ошибка сборки" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Select-String -Path build.log -Pattern "error|fatal|LNK" | Select-Object -First 40 | ForEach-Object { $_.Line } | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            exit 1
+          }
+          exit 0
 
       - name: Найти DLL
         shell: pwsh
@@ -123,5 +161,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: bongobs-cat-dll
-          path: out/
+          path: |
+            out/
+            cmake-configure.log
+            build.log
           if-no-files-found: warn
