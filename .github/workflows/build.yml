@@ -8,6 +8,7 @@ env:
   PLUGIN_REPO: a1928370421/Bongobs-Cat-Plugin
   PLUGIN_COMMIT: 6075d8fe0c9a7b73a2d5d7155bb7b9c8b39cd6fe
   OBS_HEADERS_TAG: "25.0.8"
+  OBS_DLL_VERSION: "31.0.3"
 
 jobs:
   build:
@@ -55,11 +56,9 @@ jobs:
         shell: pwsh
         run: |
           pip install pefile
-          $rel = Invoke-RestMethod "https://github.com"
-          $asset = $rel.assets | Where-Object { $_.name -like "OBS-Studio-*-Windows-x64.zip" -or $_.name -like "OBS-Studio-*-Windows-64bit.zip" } | Select-Object -First 1
-          if (-not $asset) { throw "Не найден архив OBS Windows x64 в релизе $($rel.tag_name)" }
-          Write-Host "Скачиваем $($asset.name)..."
-          curl.exe -L -f -o obs.zip $asset.browser_download_url
+          $url = "https://github.com"
+          curl.exe -L -f -o obs.zip $url
+          if (-not (Test-Path obs.zip)) { throw "Не удалось скачать $url" }
           python -c "import zipfile; zipfile.ZipFile('obs.zip').extract('bin/64bit/obs.dll','obsdll')"
           python repo/ci/make_obs_def.py obsdll/bin/64bit/obs.dll obs.def
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
