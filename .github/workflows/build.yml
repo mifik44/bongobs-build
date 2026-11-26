@@ -8,7 +8,6 @@ env:
   PLUGIN_REPO: a1928370421/Bongobs-Cat-Plugin
   PLUGIN_COMMIT: 6075d8fe0c9a7b73a2d5d7155bb7b9c8b39cd6fe
   OBS_HEADERS_TAG: "25.0.8"
-  OBS_DLL_VERSION: "31.0.3"
 
 jobs:
   build:
@@ -54,13 +53,13 @@ jobs:
 
       - name: Скачать obs.dll и сделать obs.lib
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           pip install pefile
-          $url = "https://github.com"
-          curl.exe -L -f -o obs.zip $url
-          if (-not (Test-Path obs.zip)) { throw "Не удалось скачать $url" }
-          python -c "import zipfile; zipfile.ZipFile('obs.zip').extract('bin/64bit/obs.dll','obsdll')"
-          python repo/ci/make_obs_def.py obsdll/bin/64bit/obs.dll obs.def
+          gh release download -R obsproject/obs-studio -p "*Windows*.zip" -O obs.zip
+          python -c "import zipfile; z=zipfile.ZipFile('obs.zip'); f=[n for n in z.namelist() if n.endswith('bin/64bit/obs.dll')][0]; open('obs.dll','wb').write(z.read(f))"
+          python repo/ci/make_obs_def.py obs.dll obs.def
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $libexe = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter lib.exe | Where-Object { $_.FullName -like '*Hostx64*x64*' } | Select-Object -First 1
           if (-not $libexe) { throw "lib.exe не найден" }
