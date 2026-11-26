@@ -1,17 +1,13 @@
 name: Build bongobs-cat.dll
 
-# Запускается сам после загрузки файлов, а также кнопкой "Run workflow".
 on:
   push:
   workflow_dispatch:
 
 env:
-  # Оригинальный плагин, коммит 6075d8f (полный хеш)
   PLUGIN_REPO: a1928370421/Bongobs-Cat-Plugin
   PLUGIN_COMMIT: 6075d8fe0c9a7b73a2d5d7155bb7b9c8b39cd6fe
-  # Заголовки OBS: старая версия, чтобы DLL грузилась и в новых OBS
   OBS_HEADERS_TAG: "25.0.8"
-  # Из этого релиза берём только obs.dll (список экспортов для obs.lib)
   OBS_DLL_VERSION: "33.0.3"
   OBS_DLL_ZIP_SHA256: 18a68c325adbda6f6082d5281021a8d1e35a6432842800618e8690b71925c107
 
@@ -50,7 +46,6 @@ jobs:
           git apply --ignore-whitespace --verbose ../repo/patches/Define.cpp.diff
           git apply --ignore-whitespace --verbose ../repo/patches/Hook.cpp.diff
           git apply --ignore-whitespace --verbose ../repo/patches/CMakeLists.txt.diff
-          # папка gl - остатки чужой сборки, удаляем
           rm -rf gl
           git status --short
 
@@ -62,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           pip install pefile
-          $url = "https://github.com/obsproject/obs-studio/releases/download/$env:OBS_DLL_VERSION/OBS-Studio-$env:OBS_DLL_VERSION-Windows-x64.zip"
+          $url = "https://github.com"
           Invoke-WebRequest $url -OutFile obs.zip
           $h = (Get-FileHash obs.zip -Algorithm SHA256).Hash.ToLower()
           if ($h -ne $env:OBS_DLL_ZIP_SHA256) { throw "SHA256 не совпал: $h" }
@@ -77,11 +72,12 @@ jobs:
       - name: Настроить CMake
         shell: pwsh
         run: |
+          $env:CMAKE_POLICY_VERSION_MINIMUM = "3.5"
           cmake -S repo/ci -B build -A x64 `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DPLUGIN_SRC="$env:GITHUB_WORKSPACE/plugin" `
-            -DOBS_INCLUDE="$env:GITHUB_WORKSPACE/obs-src/libobs" `
-            -DOBS_LIB="$env:GITHUB_WORKSPACE/obs.lib"
+            "-DPLUGIN_SRC=$env:GITHUB_WORKSPACE/plugin" `
+            "-DOBS_INCLUDE=$env:GITHUB_WORKSPACE/obs-src/libobs" `
+            "-DOBS_LIB=$env:GITHUB_WORKSPACE/obs.lib" `
+            "-DCMAKE_CXX_FLAGS=/EHsc /permissive /D_CRT_SECURE_NO_WARNINGS /D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS"
 
       - name: Собрать
         run: cmake --build build --config Release
