@@ -1,0 +1,104 @@
+name: Build bongobs-cat.dll
+
+# Запускается сам после загрузки файлов, а также кнопкой "Run workflow".
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  # Оригинальный плагин, коммит 6075d8f (полный хеш)
+  PLUGIN_REPO: a1928370421/Bongobs-Cat-Plugin
+  PLUGIN_COMMIT: 6075d8fe0c9a7b73a2d5d7155bb7b9c8b39cd6fe
+  # Заголовки OBS: старая версия, чтобы DLL грузилась и в новых OBS
+  OBS_HEADERS_TAG: "25.0.8"
+  # Из этого релиза берём только obs.dll (список экспортов для obs.lib)
+  OBS_DLL_VERSION: "33.0.3"
+  OBS_DLL_ZIP_SHA256: 18a68c325adbda6f6082d5281021a8d1e35a6432842800618e8690b71925c107
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Не менять переводы строк
+        run: git config --global core.autocrlf false
+
+      - name: Мои файлы (патчи и скрипты)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+
+      - name: Оригинальный плагин
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.PLUGIN_REPO }}
+          ref: ${{ env.PLUGIN_COMMIT }}
+          path: plugin
+
+      - name: Заголовки OBS
+        uses: actions/checkout@v6
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_HEADERS_TAG }}
+          path: obs-src
+          sparse-checkout: libobs
+          fetch-depth: 1
+
+      - name: Применить патчи
+        shell: bash
+        run: |
+          cd plugin
+          git apply --ignore-whitespace --verbose ../repo/patches/Define.cpp.diff
+          git apply --ignore-whitespace --verbose ../repo/patches/Hook.cpp.diff
+          git apply --ignore-whitespace --verbose ../repo/patches/CMakeLists.txt.diff
+          # папка gl - остатки чужой сборки, удаляем
+          rm -rf gl
+          git status --short
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Скачать obs.dll и сделать obs.lib
+        shell: pwsh
+        run: |
+          pip install pefile
+          $url = "https://github.com/obsproject/obs-studio/releases/download/$env:OBS_DLL_VERSION/OBS-Studio-$env:OBS_DLL_VERSION-Windows-x64.zip"
+          Invoke-WebRequest $url -OutFile obs.zip
+          $h = (Get-FileHash obs.zip -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne $env:OBS_DLL_ZIP_SHA256) { throw "SHA256 не совпал: $h" }
+          python -c "import zipfile; zipfile.ZipFile('obs.zip').extract('bin/64bit/obs.dll','obsdll')"
+          python repo/ci/make_obs_def.py obsdll/bin/64bit/obs.dll obs.def
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $libexe = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter lib.exe | Where-Object { $_.FullName -like '*Hostx64*x64*' } | Select-Object -First 1
+          if (-not $libexe) { throw "lib.exe не найден" }
+          & $libexe.FullName /nologo /def:obs.def /machine:x64 /out:obs.lib
+          if (-not (Test-Path obs.lib)) { throw "obs.lib не создан" }
+
+      - name: Настроить CMake
+        shell: pwsh
+        run: |
+          cmake -S repo/ci -B build -A x64 `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DPLUGIN_SRC="$env:GITHUB_WORKSPACE/plugin" `
+            -DOBS_INCLUDE="$env:GITHUB_WORKSPACE/obs-src/libobs" `
+            -DOBS_LIB="$env:GITHUB_WORKSPACE/obs.lib"
+
+      - name: Собрать
+        run: cmake --build build --config Release
+
+      - name: Найти и проверить DLL
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem build -Recurse -Filter bongobs-cat.dll | Select-Object -First 1
+          if (-not $dll) { throw "bongobs-cat.dll не найдена" }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $dll.FullName out/bongobs-cat.dll
+          python repo/ci/check_dll.py out/bongobs-cat.dll
+          if ($LASTEXITCODE -ne 0) { throw "проверка DLL не пройдена" }
+          (Get-FileHash out/bongobs-cat.dll -Algorithm SHA256).Hash | Out-File out/SHA256.txt
+
+      - name: Готовая DLL (скачать внизу страницы)
+        uses: actions/upload-artifact@v6
+        with:
+          name: bongobs-cat-dll
+          path: out/
