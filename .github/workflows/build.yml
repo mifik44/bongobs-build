@@ -114,7 +114,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          cmake --build build --config Release 2>&1 | Tee-Object -FilePath build.log
+          cmake --build build --config Release --target bongobs-cat 2>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) {
             "## Ошибка сборки" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
             '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
