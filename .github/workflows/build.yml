@@ -53,6 +53,13 @@ jobs:
           git apply --ignore-whitespace --verbose ../repo/patches/CMakeLists.txt.diff
           # папка gl - остатки чужой сборки, удаляем
           rm -rf gl
+          # Фикс run #9: у демо-библиотеки glew.dll в её CMake прописано "линковать без CRT"
+          # (-nodefaultlib -noentry), а новый компилятор VS2026 на раннерах GitHub превращает
+          # цикл обнуления в glewContextInit в вызов memset -> у glew.dll нечем его закрыть
+          # -> LNK2019/LNK1120. Котику нужна только статическая glew_s, поэтому просто
+          # вырезаем вредную строку, чтобы и демо-цель собиралась без проблем.
+          sed -i '/nodefaultlib -noentry/d' plugin/thirdParty/glew/build/cmake/CMakeLists.txt
+          grep -n "nodefaultlib" plugin/thirdParty/glew/build/cmake/CMakeLists.txt || echo "OK: строка nodefaultlib удалена"
           git status --short
 
       - uses: actions/setup-python@v6
@@ -90,8 +97,12 @@ jobs:
           )
           cmake @cmakeArgs
 
-      - name: Собрать
-        run: cmake --build build --config Release
+      - name: Собрать (только цель bongobs-cat)
+        # Фикс run #9: собираем именно цель плагина, а не ALL_BUILD.
+        # Демонстрационная glew.dll собрана "без CRT" и на новом MSVC падает на memset
+        # (известная проблема glew, nigels-com/glew#238). Плагину нужна только
+        # статическая glew_s, поэтому glew.dll мы вообще не собираем.
+        run: cmake --build build --config Release --target bongobs-cat
 
       - name: Найти и проверить DLL
         shell: pwsh
