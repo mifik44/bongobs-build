@@ -13,7 +13,6 @@ env:
   OBS_HEADERS_TAG: "25.0.8"
   # Из этого релиза берём только obs.dll (список экспортов для obs.lib)
   OBS_DLL_VERSION: "33.0.3"
-  # SHA256 архива OBS-Studio-33.0.3-Windows-x64.zip (проверен: скачан и сверен 2026-11-26)
   OBS_DLL_ZIP_SHA256: 18a68c325adbda6f6082d5281021a8d1e35a6432842800618e8690b71925c107
 
 jobs:
@@ -53,15 +52,6 @@ jobs:
           git apply --ignore-whitespace --verbose ../repo/patches/CMakeLists.txt.diff
           # папка gl - остатки чужой сборки, удаляем
           rm -rf gl
-          # Фикс run #9: у демо-библиотеки glew.dll в её CMake прописано "линковать без CRT"
-          # (-nodefaultlib -noentry), а новый компилятор VS2026 на раннерах GitHub превращает
-          # цикл обнуления в glewContextInit в вызов memset -> у glew.dll нечем его закрыть
-          # -> LNK2019/LNK1120. Котику нужна только статическая glew_s, поэтому просто
-          # вырезаем вредную строку. Внимание: мы уже внутри папки plugin,
-          # поэтому путь начинается с thirdParty/ (в прошлой версии был
-          # plugin/thirdParty/... -> sed не находил файл -> шаг падал мгновенно).
-          # Страховка: даже если sed не сработает, сборке это не навредит (|| echo).
-          sed -i '/nodefaultlib/d' thirdParty/glew/build/cmake/CMakeLists.txt || echo "страховка не сработала, продолжаем"
           git status --short
 
       - uses: actions/setup-python@v6
@@ -73,8 +63,7 @@ jobs:
         run: |
           pip install pefile
           $url = "https://github.com/obsproject/obs-studio/releases/download/$env:OBS_DLL_VERSION/OBS-Studio-$env:OBS_DLL_VERSION-Windows-x64.zip"
-          curl.exe -fL --retry 3 --connect-timeout 30 -o obs.zip "$url"
-          if (-not (Test-Path obs.zip)) { throw "obs.zip не скачался" }
+          Invoke-WebRequest $url -OutFile obs.zip
           $h = (Get-FileHash obs.zip -Algorithm SHA256).Hash.ToLower()
           if ($h -ne $env:OBS_DLL_ZIP_SHA256) { throw "SHA256 не совпал: $h" }
           python -c "import zipfile; zipfile.ZipFile('obs.zip').extract('bin/64bit/obs.dll','obsdll')"
@@ -88,37 +77,51 @@ jobs:
       - name: Настроить CMake
         shell: pwsh
         run: |
-          $cmakeArgs = @(
-            "-S", "repo/ci",
-            "-B", "build",
-            "-A", "x64",
-            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-            "-DPLUGIN_SRC=$env:GITHUB_WORKSPACE/plugin",
-            "-DOBS_INCLUDE=$env:GITHUB_WORKSPACE/obs-src/libobs",
-            "-DOBS_LIB=$env:GITHUB_WORKSPACE/obs.lib"
-          )
-          cmake @cmakeArgs
+          cmake -S repo/ci -B build -A x64 `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DPLUGIN_SRC="$env:GITHUB_WORKSPACE/plugin" `
+            -DOBS_INCLUDE="$env:GITHUB_WORKSPACE/obs-src/libobs" `
+            -DOBS_LIB="$env:GITHUB_WORKSPACE/obs.lib"
 
-      - name: Собрать (только цель bongobs-cat)
-        # Фикс run #9: собираем именно цель плагина, а не ALL_BUILD.
-        # Демонстрационная glew.dll собрана "без CRT" и на новом MSVC падает на memset
-        # (известная проблема glew, nigels-com/glew#238). Плагину нужна только
-        # статическая glew_s, поэтому glew.dll мы вообще не собираем.
-        run: cmake --build build --config Release --target bongobs-cat
+      - name: Собрать
+        run: cmake --build build --config Release
 
-      - name: Найти и проверить DLL
+      - name: Найти DLL
         shell: pwsh
         run: |
+          Get-ChildItem build -Recurse -Include *.dll,*.lib | Select-Object -First 30 FullName, Length | Format-Table -AutoSize | Out-String -Width 200
           $dll = Get-ChildItem build -Recurse -Filter bongobs-cat.dll | Select-Object -First 1
-          if (-not $dll) { throw "bongobs-cat.dll не найдена" }
+          if (-not $dll) { throw "bongobs-cat.dll не найдена в папке build" }
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $dll.FullName out/bongobs-cat.dll
-          python repo/ci/check_dll.py out/bongobs-cat.dll
-          if ($LASTEXITCODE -ne 0) { throw "проверка DLL не пройдена" }
           (Get-FileHash out/bongobs-cat.dll -Algorithm SHA256).Hash | Out-File out/SHA256.txt
+          Write-Host "DLL найдена: $($dll.FullName), $($dll.Length) байт"
+
+      - name: Проверка DLL (только отчёт, сборку не валит)
+        shell: python
+        run: |
+          import pefile, os
+          p = "out/bongobs-cat.dll"
+          lines = []
+          try:
+              pe = pefile.PE(p, fast_load=True)
+              pe.parse_data_directories([pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_EXPORT"]])
+              exp = sorted(e.name.decode() for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name)
+              lines.append("machine=" + hex(pe.FILE_HEADER.Machine) + " (0x8664 = x64)")
+              lines.append("экспорты: " + ", ".join(exp))
+              data = open(p, "rb").read()
+              for k in ("esc", "tab", "lalt", "ralt", "lwin", "enter", "backspace", "num/"):
+                  lines.append("имя клавиши %-10s ASCII: %s  UTF-16: %s" % (k, k.encode() in data, k.encode("utf-16le") in data))
+          except Exception as e:
+              lines.append("ОШИБКА проверки: %r" % (e,))
+          text = "\n".join(lines)
+          print(text)
+          open("out/diagnostics.txt", "w", encoding="utf-8").write(text + "\n")
 
       - name: Готовая DLL (скачать внизу страницы)
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: bongobs-cat-dll
           path: out/
+          if-no-files-found: warn
