@@ -79,11 +79,16 @@ jobs:
       - name: Настроить CMake
         shell: pwsh
         run: |
-          cmake -S repo/ci -B build -A x64 `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DPLUGIN_SRC="$env:GITHUB_WORKSPACE/plugin" `
-            -DOBS_INCLUDE="$env:GITHUB_WORKSPACE/obs-src/libobs" `
-            -DOBS_LIB="$env:GITHUB_WORKSPACE/obs.lib"
+          $cmakeArgs = @(
+            "-S", "repo/ci",
+            "-B", "build",
+            "-A", "x64",
+            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+            "-DPLUGIN_SRC=$env:GITHUB_WORKSPACE/plugin",
+            "-DOBS_INCLUDE=$env:GITHUB_WORKSPACE/obs-src/libobs",
+            "-DOBS_LIB=$env:GITHUB_WORKSPACE/obs.lib"
+          )
+          cmake @cmakeArgs
 
       - name: Собрать
         run: cmake --build build --config Release
