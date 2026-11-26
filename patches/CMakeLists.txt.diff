@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 30cd0c6..7ae3607 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -35,6 +35,9 @@ elseif(MSVC_VERSION GREATER_EQUAL 1910 AND MSVC_VERSION LESS 1920)
+ elseif(MSVC_VERSION GREATER_EQUAL 1920 AND MSVC_VERSION LESS 1930)
+   # Visual Studio 2019
+   set(COMPILER 142)
++elseif(MSVC_VERSION GREATER_EQUAL 1930)
++  # Visual Studio 2022 and newer: ABI-compatible with the 142 (VS2019) Cubism Core libs
++  set(COMPILER 142)
+ elseif(MSVC)
+   message(FATAL_ERROR "[${APP_NAME}] Unsupported Visual C++ compiler used.")
+ else()
+@@ -101,7 +104,7 @@ set(${APP_NAME}_SOURCES
+         Hook.cpp
+ 	EventManager.cpp
+ 	Define.cpp
+-	json.cpp
++	jsoncpp.cpp
+ 	InfoReader.cpp
+ 	)
+ 

@@ -1,0 +1,133 @@
+--- a/Hook.cpp
++++ b/Hook.cpp
+@@ -226,6 +226,114 @@
+ 	case VK_RCONTROL:
+ 		key = 60;
+ 		break;
++	case VK_ESCAPE:
++		key = 61; // esc
++		break;
++	case VK_TAB:
++		key = 62; // tab
++		break;
++	case VK_CAPITAL:
++		key = 63; // caps
++		break;
++	case VK_LWIN:
++		key = 64; // lwin
++		break;
++	case VK_LMENU:
++		key = 65; // lalt
++		break;
++	case VK_RMENU:
++		key = 66; // ralt
++		break;
++	case VK_RETURN:
++		key = 67; // enter
++		break;
++	case VK_OEM_2:
++		key = 68; // /
++		break;
++	case VK_OEM_3:
++		key = 69; // `
++		break;
++	case VK_OEM_5:
++		key = 70; // backslash
++		break;
++	case VK_OEM_7:
++		key = 71; // '
++		break;
++	case VK_OEM_1:
++		key = 72; // ;
++		break;
++	case VK_OEM_PLUS:
++		key = 73; // =
++		break;
++	case VK_OEM_MINUS:
++		key = 74; // -
++		break;
++	case VK_BACK:
++		key = 75; // backspace
++		break;
++	case VK_INSERT:
++		key = 76; // insert
++		break;
++	case VK_DELETE:
++		key = 77; // delete
++		break;
++	case VK_HOME:
++		key = 78; // home
++		break;
++	case VK_END:
++		key = 79; // end
++		break;
++	case VK_PRIOR:
++		key = 80; // pgup
++		break;
++	case VK_NEXT:
++		key = 81; // pgdn
++		break;
++	case VK_NUMPAD0:
++		key = 82; // num0
++		break;
++	case VK_NUMPAD1:
++		key = 83; // num1
++		break;
++	case VK_NUMPAD2:
++		key = 84; // num2
++		break;
++	case VK_NUMPAD3:
++		key = 85; // num3
++		break;
++	case VK_NUMPAD4:
++		key = 86; // num4
++		break;
++	case VK_NUMPAD5:
++		key = 87; // num5
++		break;
++	case VK_NUMPAD6:
++		key = 88; // num6
++		break;
++	case VK_NUMPAD7:
++		key = 89; // num7
++		break;
++	case VK_NUMPAD8:
++		key = 90; // num8
++		break;
++	case VK_NUMPAD9:
++		key = 91; // num9
++		break;
++	case VK_MULTIPLY:
++		key = 92; // num*
++		break;
++	case VK_ADD:
++		key = 93; // num+
++		break;
++	case VK_SUBTRACT:
++		key = 94; // num-
++		break;
++	case VK_DECIMAL:
++		key = 95; // num.
++		break;
++	case VK_DIVIDE:
++		key = 96; // num/
++		break;
+ 	default:
+ 		key = -1;
+ 		break;
+@@ -239,13 +347,13 @@
+ 
+ 	KBDLLHOOKSTRUCT *p = (KBDLLHOOKSTRUCT *)lParam;
+ 	if (nCode == HC_ACTION) {
+-		if (wParam == WM_KEYUP) {
++		if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) { // Alt arrives as WM_SYS*
+ 			int re =HookCode(p->vkCode);
+ 			if (re>=0) {
+ 				eventManager->KeyEventUp(re);
+ 			}			
+ 		}
+-		if (wParam == WM_KEYDOWN) {
++		if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+ 			int re = HookCode(p->vkCode);
+ 			if (re >= 0) {
+ 				eventManager->KeyEventDown(re);
